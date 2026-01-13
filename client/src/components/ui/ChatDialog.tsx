@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChatMessage as ChatMessageType } from '../../types';
+import type { ChatMessage as ChatMessageType, NPCConfig } from '../../types';
 import ChatMessage from './ChatMessage';
 
 interface ChatDialogProps {
@@ -9,6 +9,7 @@ interface ChatDialogProps {
   onSend: (message: string) => void;
   isLoading: boolean;
   error: string | null;
+  npcConfig: NPCConfig | null;
 }
 
 export default function ChatDialog({
@@ -18,6 +19,7 @@ export default function ChatDialog({
   onSend,
   isLoading,
   error,
+  npcConfig,
 }: ChatDialogProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -47,7 +49,9 @@ export default function ChatDialog({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !npcConfig) return null;
+
+  const { name, role, level, colorTheme } = npcConfig;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -56,10 +60,18 @@ export default function ChatDialog({
         onKeyDown={handleKeyDown}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-purple-500 to-pink-500 rounded-t-xl">
+        <div
+          className="flex items-center justify-between px-4 py-3 border-b rounded-t-xl"
+          style={{
+            background: `linear-gradient(135deg, ${colorTheme.primary}, ${colorTheme.secondary})`,
+          }}
+        >
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-green-400 animate-pulse" />
-            <h2 className="text-white font-semibold">마을 안내원</h2>
+            <div>
+              <h2 className="text-white font-semibold">{name}</h2>
+              <p className="text-white/70 text-xs">{role} · Lv.{level}</p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -75,7 +87,7 @@ export default function ChatDialog({
         <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-[300px]">
           {messages.length === 0 && (
             <div className="text-center text-gray-400 py-8">
-              <p>안내원에게 말을 걸어보세요!</p>
+              <p>{name}에게 말을 걸어보세요!</p>
             </div>
           )}
           {messages.map((msg) => (

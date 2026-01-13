@@ -5,7 +5,7 @@ export default function Map() {
     <group>
       {/* Ground with physics */}
       <RigidBody type="fixed" colliders="cuboid">
-        <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.5, 0]}>
+        <mesh receiveShadow position={[0, -0.5, 0]}>
           <boxGeometry args={[50, 1, 50]} />
           <meshStandardMaterial color="#4a7c4e" />
         </mesh>

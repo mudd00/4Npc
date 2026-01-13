@@ -1,20 +1,23 @@
 import { Canvas } from '@react-three/fiber';
-import { Suspense, useRef, useState } from 'react';
+import { Suspense, useRef } from 'react';
 import { Physics } from '@react-three/rapier';
 import Map from './Map';
-import Player, { PlayerHandle } from './Player';
+import Player from './Player';
+import type { PlayerHandle } from './Player';
 import NPC from './NPC';
 import ThirdPersonCamera from './ThirdPersonCamera';
+import { NPC_CONFIGS } from '../../types';
+import type { NPCConfig } from '../../types';
 
 interface SceneProps {
-  onNearNPC: (isNear: boolean) => void;
+  onNearNPC: (npcConfig: NPCConfig | null) => void;
   onPlayerPositionChange: (position: { x: number; y: number; z: number }) => void;
-  isChatOpen: boolean;
+  isInteracting: boolean;
+  nearNPC: NPCConfig | null;
+  bubbleMessage?: string;
 }
 
-const NPC_POSITION = { x: 5, y: 0, z: 0 };
-
-function SceneContent({ onNearNPC, onPlayerPositionChange, isChatOpen }: SceneProps) {
+function SceneContent({ onNearNPC, onPlayerPositionChange, isInteracting, nearNPC, bubbleMessage }: SceneProps) {
   const playerRef = useRef<PlayerHandle>(null);
   const cameraAngleRef = useRef(0);
 
@@ -39,10 +42,24 @@ function SceneContent({ onNearNPC, onPlayerPositionChange, isChatOpen }: ScenePr
           cameraAngleRef={cameraAngleRef}
           onPositionChange={onPlayerPositionChange}
           onNearNPC={onNearNPC}
-          npcPosition={NPC_POSITION}
-          disabled={isChatOpen}
+          npcConfigs={NPC_CONFIGS}
+          disabled={isInteracting}
         />
-        <NPC position={[NPC_POSITION.x, NPC_POSITION.y, NPC_POSITION.z]} />
+
+        {/* 4명의 NPC 렌더링 */}
+        {NPC_CONFIGS.map((config) => {
+          const isThisNPCNear = nearNPC?.id === config.id;
+          const showBubble = (isThisNPCNear && !isInteracting) || (isThisNPCNear && !!bubbleMessage);
+
+          return (
+            <NPC
+              key={config.id}
+              config={config}
+              isPlayerNear={showBubble}
+              bubbleMessage={isThisNPCNear ? bubbleMessage : ''}
+            />
+          );
+        })}
       </Physics>
 
       <ThirdPersonCamera

@@ -4,6 +4,7 @@ import { CapsuleCollider, RigidBody, RapierRigidBody } from '@react-three/rapier
 import * as THREE from 'three';
 import { useKeyboardControls } from '../../hooks/useKeyboardControls';
 import CharacterModel from './CharacterModel';
+import type { NPCConfig } from '../../types';
 
 const WALK_SPEED = 5;
 const START_POS: [number, number, number] = [0, 2, 5];
@@ -15,23 +16,24 @@ const CAPSULE_Y_OFFSET = 1.28;
 interface PlayerProps {
   cameraAngleRef: React.MutableRefObject<number>;
   onPositionChange: (position: { x: number; y: number; z: number }) => void;
-  onNearNPC: (isNear: boolean) => void;
-  npcPosition: { x: number; y: number; z: number };
+  onNearNPC: (npcConfig: NPCConfig | null) => void;
+  npcConfigs: NPCConfig[];
   disabled: boolean;
 }
 
-export interface PlayerHandle {
+export type PlayerHandle = {
   getWorldPosition: (target: THREE.Vector3) => THREE.Vector3;
-}
+};
 
 const Player = forwardRef<PlayerHandle, PlayerProps>(
-  ({ cameraAngleRef, onPositionChange, onNearNPC, npcPosition, disabled }, ref) => {
+  ({ cameraAngleRef, onPositionChange, onNearNPC, npcConfigs, disabled }, ref) => {
     const bodyRef = useRef<RapierRigidBody>(null);
     const characterRef = useRef<THREE.Group>(null);
     const currentRotationRef = useRef(new THREE.Quaternion());
     const { forward, backward, left, right } = useKeyboardControls(disabled);
     const [isMoving, setIsMoving] = useState(false);
     const lastMovingRef = useRef(false);
+    const lastNearNPCRef = useRef<string | null>(null);
 
     const INTERACTION_DISTANCE = 3;
 
@@ -121,11 +123,27 @@ const Player = forwardRef<PlayerHandle, PlayerProps>(
         onPositionChange({ x: pos.x, y: pos.y, z: pos.z });
       }
 
-      // Check NPC distance
-      const dx = pos.x - npcPosition.x;
-      const dz = pos.z - npcPosition.z;
-      const distance = Math.sqrt(dx * dx + dz * dz);
-      onNearNPC(distance < INTERACTION_DISTANCE);
+      // Check distance to all NPCs and find nearest one within interaction range
+      let nearestNPC: NPCConfig | null = null;
+      let nearestDistance = INTERACTION_DISTANCE;
+
+      for (const npc of npcConfigs) {
+        const dx = pos.x - npc.position[0];
+        const dz = pos.z - npc.position[2];
+        const distance = Math.sqrt(dx * dx + dz * dz);
+
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestNPC = npc;
+        }
+      }
+
+      // Only call callback if the nearest NPC changed
+      const nearestId = nearestNPC?.id ?? null;
+      if (nearestId !== lastNearNPCRef.current) {
+        lastNearNPCRef.current = nearestId;
+        onNearNPC(nearestNPC);
+      }
     });
 
     return (

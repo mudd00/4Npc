@@ -1,11 +1,17 @@
-import { useState, useCallback } from 'react';
-import { sendMessage } from '../lib/api';
-import { ChatMessage } from '../types';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { sendMessageByLevel } from '../lib/api';
+import type { ChatMessage, NPCLevel } from '../types';
 
-export function useChat() {
+export function useChat(level: NPCLevel = 2) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const levelRef = useRef(level);
+
+  // 레벨이 변경되면 ref 업데이트
+  useEffect(() => {
+    levelRef.current = level;
+  }, [level]);
 
   const send = useCallback(async (content: string) => {
     if (!content.trim() || isLoading) return;
@@ -22,7 +28,8 @@ export function useChat() {
     setError(null);
 
     try {
-      const response = await sendMessage(content);
+      // 현재 레벨에 맞는 API 호출
+      const response = await sendMessageByLevel(content, levelRef.current);
       const npcMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'npc',

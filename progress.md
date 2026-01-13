@@ -80,21 +80,111 @@ Claude API를 활용한 4단계 AI NPC 시스템.
 
 ---
 
+### Level 2: RAG NPC ✅ 완료
+
+#### 세계관
+- **별빛 마을**: 100년 전 별이 떨어진 곳에 세워진 판타지 마을
+- **NPC**: 마을 안내원 '루나' (토박이, 마을을 사랑함)
+
+#### Phase 1: RAG 인프라 ✅
+- [x] 의존성 설치 (openai, @supabase/supabase-js)
+- [x] embeddingService.ts - OpenAI text-embedding-3-small
+- [x] vectorStore.ts - Supabase pgvector 검색
+- [x] supabase-setup.sql - 테이블/함수 생성 SQL
+
+#### Phase 2: 지식 데이터 ✅
+- [x] knowledge.json - 별빛 마을 세계관 (15개 문서)
+  - 카테고리: history, location, npc, rumor
+- [x] seedKnowledge.ts - 임베딩 생성 및 DB 저장 스크립트
+
+#### Phase 3: API 업데이트 ✅
+- [x] chat.ts - RAG 통합 (/api/chat/level2)
+- [x] chat.ts - 빠른 정보 엔드포인트 (/api/quick-info)
+- [x] api.ts (Client) - getQuickInfo 함수 추가
+
+#### Phase 4: UI 업데이트 ✅
+- [x] InteractionMenu.tsx - 게임형 상호작용 메뉴
+- [x] Game.tsx - 메뉴 로직 통합
+- [x] Scene.tsx - bubbleMessage 전달
+- [x] NPC.tsx / SpeechBubble.tsx - RAG 응답 표시
+
+---
+
+### 4 NPC 시스템 ✅ 완료
+
+#### NPC 캐릭터 4명 (일렬 배치)
+| Level | 이름 | 역할 | 위치 | 특징 |
+|-------|------|------|------|------|
+| 1 | 밤이 | 졸린 경비원 | (-9, 0, -2) | 기본 API, 기억 없음 |
+| 2 | 루나 | 마을 안내원 | (-3, 0, -2) | RAG 기반 지식 대화 |
+| 3 | 해나 | 친근한 상인 | (3, 0, -2) | Memory 시스템 ✅ |
+| 4 | 별이 | 신비로운 점술가 | (9, 0, -2) | Personality 시스템 (임시) |
+
+#### 구현 완료 항목 ✅
+- [x] types/index.ts - NPCConfig 타입 및 NPC_CONFIGS 정의
+- [x] NPC.tsx - 레벨별 스타일링 (색상 테마, 레벨 뱃지)
+- [x] SpeechBubble.tsx - 동적 색상 테마 지원
+- [x] Scene.tsx - 4개 NPC 렌더링
+- [x] Player.tsx - 다중 NPC 근접 감지
+- [x] Game.tsx - 다중 NPC 상호작용 로직
+- [x] InteractionMenu.tsx - 레벨별 메뉴 옵션
+- [x] ChatDialog.tsx - NPC별 헤더 스타일링
+- [x] useChat.ts - 레벨별 API 호출
+- [x] api.ts - sendMessageByLevel 함수
+
+#### Server API 엔드포인트 ✅
+- [x] /api/chat/level1 - 기본 Claude API (밤이)
+- [x] /api/chat/level2 - RAG 기반 (루나)
+- [x] /api/chat/level3 - Memory (해나) ✅ 완성
+- [x] /api/chat/level4 - Personality (별이) - 임시 구현
+- [x] /api/quick-info - Level 2 빠른 정보 (말풍선)
+
+---
+
+### Level 3: Memory NPC ✅ 완료
+
+#### Supabase 테이블 ✅
+- [x] `conversations` 테이블 - 대화 기록 저장
+- [x] `user_summaries` 테이블 - 유저 정보 요약 저장
+- [x] `get_recent_conversations` 함수 - 최근 대화 조회
+- [x] `upsert_user_summary` 함수 - 유저 요약 업데이트
+- [x] SQL 파일: `server/src/sql/conversations.sql`
+
+#### Server 구현 ✅
+- [x] memoryService.ts - 대화 저장/조회, 유저 요약 관리
+- [x] chat.ts Level 3 엔드포인트 - 메모리 통합
+  - 이전 대화 기록 조회 및 컨텍스트 포함
+  - 유저 요약 정보 활용
+  - 대화 후 자동 저장
+  - 10번 대화마다 유저 요약 자동 생성
+
+#### Client 구현 ✅
+- [x] api.ts - getUserId() 함수 (localStorage 기반)
+- [x] api.ts - Level 3+ API 호출 시 userId 자동 전송
+
+---
+
 ## 현재 상태
 
-**Level 1 완료 (배포만 남음)**
+**Level 1~3 완료, Level 4 진행 예정**
 
 ```
-client/ 설정 ✅ 완료
-server/ 설정 ✅ 완료
-TypeScript 타입체크 ✅ 통과
-3D 환경 ✅ Rapier 물리엔진 적용
-캐릭터 모델 ✅ BaseCharacter.gltf 적용
-카메라 ✅ 마우스 회전 3인칭 팔로우
-이동 ✅ WASD + 카메라 방향 기준
-상호작용 ✅ F키 대화, ESC 닫기
-대화 UI ✅ ChatDialog 완성
-API 연동 ✅ /api/chat → Claude API
+Level 1 ✅ 밤이 (기본 API) - 완료
+Level 2 ✅ 루나 (RAG) - 완료
+Level 3 ✅ 해나 (Memory) - 완료
+Level 4 🔄 별이 (Personality) - 임시 구현, TODO: 호감도 DB
+
+4 NPC 배치 ✅ 일렬 배치
+├── (-9, 0, -2): 밤이 (Lv.1)
+├── (-3, 0, -2): 루나 (Lv.2)
+├── (3, 0, -2): 해나 (Lv.3)
+└── (9, 0, -2): 별이 (Lv.4)
+
+레벨별 차별화 ✅
+├── Level 1: 대화만 가능 (기억 없음)
+├── Level 2: 대화 + RAG 메뉴 (마을 정보, 장소, 소문)
+├── Level 3: 대화 + 메모리 (이전 대화 기억, 유저 정보 요약)
+└── Level 4: 대화만 가능 (TODO: 호감도 시스템)
 ```
 
 ---
@@ -106,6 +196,9 @@ API 연동 ✅ /api/chat → Claude API
 **Server** (`server/.env`):
 ```env
 ANTHROPIC_API_KEY=sk-ant-xxxxx
+OPENAI_API_KEY=sk-xxxxx           # Level 2: 임베딩용
+SUPABASE_URL=https://xxx.supabase.co  # Level 2: 벡터 DB
+SUPABASE_ANON_KEY=xxxxx           # Level 2: 벡터 DB
 PORT=3001
 CLIENT_URL=http://localhost:5173
 ```
@@ -150,17 +243,31 @@ cd client && npm run dev
 
 ## 다음 작업
 
-### 옵션 1: Level 1 배포
-1. Server → Railway 배포
-2. Client → Vercel 배포
-3. 환경변수 설정
-4. CORS 프로덕션 URL 설정
+### 테스트
+```bash
+# 터미널 1 - 서버
+cd server && npm run dev
 
-### 옵션 2: Level 2 RAG NPC 개발
-1. 새 프로젝트 폴더 생성 (npc-level2-rag)
-2. Supabase pgvector 설정
-3. NPC 성격/지식 문서 임베딩
-4. RAG 파이프라인 구현
+# 터미널 2 - 클라이언트
+cd client && npm run dev
+```
+- 4명의 NPC에게 각각 접근하여 대화 테스트
+- 레벨별 차이 확인:
+  - 밤이 (Lv.1): 졸린 말투, 짧은 대답, 기억 없음
+  - 루나 (Lv.2): RAG 메뉴 (마을 정보, 장소, 소문)
+  - 해나 (Lv.3): 이전 대화 기억, 유저 정보 요약
+  - 별이 (Lv.4): 신비로운 말투
+
+### Level 4 Personality 구현 예정
+1. Supabase `user_affinity` 테이블 생성
+2. 호감도 조회/업데이트 기능 구현
+3. 호감도에 따른 응답 변화 (친밀/보통/경계)
+4. 대화 내용에 따른 호감도 증감
+
+### 배포
+1. Server → Railway
+2. Client → Vercel
+3. 환경변수 설정
 
 ---
 
@@ -173,7 +280,9 @@ cd client && npm run dev
 | Physics | @react-three/rapier |
 | Styling | Tailwind CSS |
 | Backend | Express.js + TypeScript |
-| AI | Claude API (Anthropic SDK) |
+| AI (대화) | Claude API (Anthropic SDK) |
+| AI (임베딩) | OpenAI text-embedding-3-small [L2] |
+| Vector DB | Supabase pgvector [L2] |
 | 배포 | Vercel (Client) + Railway (Server) |
 
 ---
@@ -191,18 +300,20 @@ cd client && npm run dev
 │   │   │   │   ├── Player.tsx      # Rapier 기반 플레이어
 │   │   │   │   ├── NPC.tsx         # NPC + 이름표
 │   │   │   │   ├── CharacterModel.tsx  # GLTF 모델 + 애니메이션
+│   │   │   │   ├── SpeechBubble.tsx    # [L2] RAG 말풍선
 │   │   │   │   └── ThirdPersonCamera.tsx  # 마우스 회전 카메라
 │   │   │   ├── ui/
-│   │   │   │   ├── ChatDialog.tsx  # 대화창
-│   │   │   │   ├── ChatMessage.tsx # 메시지 버블
-│   │   │   │   └── InteractionPrompt.tsx  # F키 안내
+│   │   │   │   ├── ChatDialog.tsx      # 대화창
+│   │   │   │   ├── ChatMessage.tsx     # 메시지 버블
+│   │   │   │   ├── InteractionPrompt.tsx  # F키 안내
+│   │   │   │   └── InteractionMenu.tsx    # [L2] 상호작용 메뉴
 │   │   │   └── Game.tsx            # 게임 로직 통합
 │   │   ├── hooks/
 │   │   │   ├── useKeyboardControls.ts
 │   │   │   ├── useChat.ts
 │   │   │   └── useInteraction.ts
 │   │   ├── lib/
-│   │   │   └── api.ts              # API 호출
+│   │   │   └── api.ts              # API 호출 (+ getQuickInfo)
 │   │   └── types/
 │   │       └── index.ts
 │   ├── public/
@@ -213,11 +324,23 @@ cd client && npm run dev
 ├── server/                         # Backend
 │   ├── src/
 │   │   ├── routes/
-│   │   │   └── chat.ts             # /api/chat 라우트
+│   │   │   └── chat.ts             # /api/chat + /api/quick-info
+│   │   ├── services/
+│   │   │   ├── embeddingService.ts # [L2] OpenAI 임베딩
+│   │   │   ├── vectorStore.ts      # [L2] Supabase 벡터 검색
+│   │   │   └── memoryService.ts    # [L3] 대화 기록 관리
+│   │   ├── data/
+│   │   │   └── knowledge.json      # [L2] 세계관 지식 데이터
+│   │   ├── sql/
+│   │   │   └── conversations.sql   # [L3] 메모리 테이블 SQL
+│   │   ├── scripts/
+│   │   │   ├── supabase-setup.sql  # [L2] DB 설정 SQL
+│   │   │   └── seedKnowledge.ts    # [L2] 지식 시드 스크립트
 │   │   └── index.ts                # Express 서버
 │   ├── .env.example
 │   └── package.json
 │
+├── CLAUDE.md                       # Claude AI 작업 지침
 ├── progress.md                     # 이 파일
 └── README.md
 ```

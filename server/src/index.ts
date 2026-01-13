@@ -1,11 +1,12 @@
-import express from 'express';
-import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
-import chatRouter from './routes/chat';
 
-// 루트 .env 파일 로드
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+// 루트 .env 파일 로드 - 다른 모듈 import 전에 먼저 실행
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+import express from 'express';
+import cors from 'cors';
+import chatRouter from './routes/chat';
 
 const app = express();
 const PORT = process.env.PORT || 3001;

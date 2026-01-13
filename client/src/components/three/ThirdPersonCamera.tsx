@@ -1,7 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
-import { PlayerHandle } from './Player';
+import type { PlayerHandle } from './Player';
 
 const DEFAULT_CAMERA_DISTANCE = 10;
 const DEFAULT_CAMERA_HEIGHT = 6;
