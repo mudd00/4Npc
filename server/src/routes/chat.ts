@@ -189,15 +189,22 @@ router.post('/chat/level3', async (req: Request, res: Response) => {
     const queryEmbedding = await embeddingService.embed(message);
     const relevantDocs = await vectorStore.search(queryEmbedding, 2, 0.5);
 
-    // 4. 컨텍스트 구성
+    // 4. 첫 방문 감지
+    const isFirstVisit = previousConversations.length === 0;
+
+    // 5. 컨텍스트 구성
     let context = '';
 
-    if (userSummary) {
-      context += `\n\n## 이 손님에 대해 기억하는 것:\n${userSummary}`;
-    }
+    if (isFirstVisit) {
+      context += '\n\n## 상황:\n처음 온 손님입니다. 반갑게 인사하고 이름을 물어보세요.';
+    } else {
+      if (userSummary) {
+        context += `\n\n## 이 손님에 대해 기억하는 것:\n${userSummary}`;
+      }
 
-    if (conversationHistory) {
-      context += `\n\n## 최근 대화 기록:\n${conversationHistory}`;
+      if (conversationHistory) {
+        context += `\n\n## 최근 대화 기록:\n${conversationHistory}`;
+      }
     }
 
     if (relevantDocs.length > 0) {
@@ -206,7 +213,7 @@ router.post('/chat/level3', async (req: Request, res: Response) => {
         .join('\n\n');
     }
 
-    // 5. Claude API 호출
+    // 6. Claude API 호출
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
@@ -217,10 +224,10 @@ router.post('/chat/level3', async (req: Request, res: Response) => {
     const textContent = response.content[0];
     const responseText = textContent?.type === 'text' ? textContent.text : '';
 
-    // 6. 대화 기록 저장
+    // 7. 대화 기록 저장
     await memoryService.saveConversation(finalUserId, npcId, message, responseText);
 
-    // 7. 특정 조건에서 유저 요약 업데이트 (5번째 대화마다)
+    // 8. 특정 조건에서 유저 요약 업데이트 (10번째 대화마다)
     if (previousConversations.length > 0 && previousConversations.length % 10 === 0) {
       // 요약 생성 요청
       const summaryResponse = await anthropic.messages.create({
@@ -243,6 +250,7 @@ router.post('/chat/level3', async (req: Request, res: Response) => {
 
     res.json({
       response: responseText,
+      isFirstVisit,
       hasMemory: previousConversations.length > 0,
       conversationCount: previousConversations.length + 2,
     });

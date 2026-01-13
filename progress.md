@@ -13,12 +13,15 @@ Claude API를 활용한 4단계 AI NPC 시스템.
 - **레벨 구조**: 각 레벨은 독립된 프로젝트로 분리
 
 ### 4단계 NPC 레벨
-| Level | 이름 | 핵심 기능 |
-|-------|------|----------|
-| 1 | Basic API NPC | Claude API 기본 연동, 매 대화 독립적 |
-| 2 | RAG NPC | 문서 임베딩으로 NPC 성격/지식 주입 |
-| 3 | Memory NPC | Vector DB로 대화 기억, 유저 정보 저장 |
-| 4 | Personality NPC | 호감도 시스템, 감정 상태 관리 |
+
+각 레벨은 **독립적인 특성**을 가진 NPC입니다. (기능 누적 X, 개별 특성 O)
+
+| Level | 이름 | 핵심 기능 | 설명 |
+|-------|------|----------|------|
+| 1 | Basic API NPC | 기본 챗봇 | Claude API 기본 연동, 기억 없음 |
+| 2 | RAG NPC | 세계관 지식 | 문서 임베딩으로 NPC가 알고 있는 정보 제공 |
+| 3 | Memory NPC | 대화 기억 | 유저와의 대화를 기억하고 맥락 유지 |
+| 4 | Personality NPC | 감정 + 호감도 | 관계에 따라 말투/태도가 달라지는 NPC |
 
 ---
 
@@ -193,12 +196,13 @@ Level 4 🔄 별이 (Personality) - 임시 구현, TODO: 호감도 DB
 
 ### 1. 환경변수 설정
 
-**Server** (`server/.env`):
+**루트 `.env` (통합 관리)**:
 ```env
 ANTHROPIC_API_KEY=sk-ant-xxxxx
 OPENAI_API_KEY=sk-xxxxx           # Level 2: 임베딩용
-SUPABASE_URL=https://xxx.supabase.co  # Level 2: 벡터 DB
-SUPABASE_ANON_KEY=xxxxx           # Level 2: 벡터 DB
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_ANON_KEY=xxxxx
+SUPABASE_SERVICE_ROLE_KEY=xxxxx
 PORT=3001
 CLIENT_URL=http://localhost:5173
 ```
@@ -214,7 +218,14 @@ cd client && npm install
 cd server && npm install
 ```
 
-### 3. 실행
+### 3. DB 확인 및 시드 (필요 시)
+```bash
+cd server
+npm run check-db   # DB 데이터 확인
+npm run seed       # Level 2 지식 데이터 임베딩 (knowledge 테이블)
+```
+
+### 4. 실행
 ```bash
 # Terminal 1 - Server
 cd server && npm run dev
@@ -223,7 +234,7 @@ cd server && npm run dev
 cd client && npm run dev
 ```
 
-### 4. 접속
+### 5. 접속
 - **Client**: http://localhost:5173
 - **Server**: http://localhost:3001
 
@@ -243,28 +254,45 @@ cd client && npm run dev
 
 ## 다음 작업
 
-### 테스트
-```bash
-# 터미널 1 - 서버
-cd server && npm run dev
+### 1. 테스트 (현재 진행 중)
+- [x] Level 2 RAG 지식 데이터 seed 완료 (knowledge 테이블 15개)
+- [x] Level 2 RAG NPC (루나) 테스트 완료
+- [ ] Level 3 Memory NPC (해나) 테스트 - **구조 개선 필요**
+- [ ] Level 4 Personality NPC (별이) 테스트
 
-# 터미널 2 - 클라이언트
-cd client && npm run dev
-```
-- 4명의 NPC에게 각각 접근하여 대화 테스트
-- 레벨별 차이 확인:
-  - 밤이 (Lv.1): 졸린 말투, 짧은 대답, 기억 없음
-  - 루나 (Lv.2): RAG 메뉴 (마을 정보, 장소, 소문)
-  - 해나 (Lv.3): 이전 대화 기억, 유저 정보 요약
-  - 별이 (Lv.4): 신비로운 말투
+### Level 3 구조 개선 필요 ⚠️
 
-### Level 4 Personality 구현 예정
+**레벨별 차별점 정리:**
+| Level | 핵심 기능 | 차별점 |
+|-------|----------|--------|
+| 1 | 기본 API | 기억 없음 |
+| 2 | RAG | 세계관 지식 |
+| 3 | Memory | 대화 기억 (누구인지, 뭘 말했는지) |
+| 4 | Personality | 호감도 + 감정 (태도 변화, 감정 상태) |
+
+**현재 문제점:**
+- 사용자가 먼저 "내 이름은 뭐야" 라고 말해야 정보가 저장됨
+- 뜬금없이 자기 정보를 말하는 건 부자연스러운 UX
+
+**개선 방향 (메모리 기반 행동, 성격/감정은 Level 4 영역):**
+1. **첫 방문 감지** → "처음 뵙네요, 이름이 어떻게 되세요?"
+2. **재방문 감지** → "다시 오셨네요, 저번에 XX 얘기했었죠"
+3. **대화 내용 기억** → 이전 대화 맥락 유지
+
+**구현 완료:**
+- [x] 첫 방문 감지 로직 (previousConversations.length === 0)
+- [x] 첫 방문 시 "처음 온 손님입니다. 반갑게 인사하고 이름을 물어보세요." 컨텍스트 추가
+- [x] 재방문 시 기존 로직 유지 (대화 기록 + 유저 요약 활용)
+
+**변경 파일:** `server/src/routes/chat.ts` (Level 3 엔드포인트)
+
+### 2. Level 4 Personality 구현 예정
 1. Supabase `user_affinity` 테이블 생성
 2. 호감도 조회/업데이트 기능 구현
 3. 호감도에 따른 응답 변화 (친밀/보통/경계)
 4. 대화 내용에 따른 호감도 증감
 
-### 배포
+### 3. 배포 (최종 단계)
 1. Server → Railway
 2. Client → Vercel
 3. 환경변수 설정
