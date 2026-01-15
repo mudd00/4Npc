@@ -257,10 +257,10 @@ cd client && npm run dev
 ### 1. 테스트 (현재 진행 중)
 - [x] Level 2 RAG 지식 데이터 seed 완료 (knowledge 테이블 15개)
 - [x] Level 2 RAG NPC (루나) 테스트 완료
-- [ ] Level 3 Memory NPC (해나) 테스트 - **구조 개선 필요**
+- [ ] Level 3 Memory NPC (해나) 테스트 - **UX 개선 완료, 테스트 진행 중**
 - [ ] Level 4 Personality NPC (별이) 테스트
 
-### Level 3 구조 개선 필요 ⚠️
+### Level 3 구조 개선 ✅ 완료
 
 **레벨별 차별점 정리:**
 | Level | 핵심 기능 | 차별점 |
@@ -270,21 +270,82 @@ cd client && npm run dev
 | 3 | Memory | 대화 기억 (누구인지, 뭘 말했는지) |
 | 4 | Personality | 호감도 + 감정 (태도 변화, 감정 상태) |
 
-**현재 문제점:**
-- 사용자가 먼저 "내 이름은 뭐야" 라고 말해야 정보가 저장됨
-- 뜬금없이 자기 정보를 말하는 건 부자연스러운 UX
-
-**개선 방향 (메모리 기반 행동, 성격/감정은 Level 4 영역):**
-1. **첫 방문 감지** → "처음 뵙네요, 이름이 어떻게 되세요?"
-2. **재방문 감지** → "다시 오셨네요, 저번에 XX 얘기했었죠"
-3. **대화 내용 기억** → 이전 대화 맥락 유지
-
 **구현 완료:**
 - [x] 첫 방문 감지 로직 (previousConversations.length === 0)
 - [x] 첫 방문 시 "처음 온 손님입니다. 반갑게 인사하고 이름을 물어보세요." 컨텍스트 추가
 - [x] 재방문 시 기존 로직 유지 (대화 기록 + 유저 요약 활용)
+- [x] **NPC가 먼저 인사하는 자연스러운 UX 구현**
+  - Server: `/api/chat/level3/start` 엔드포인트 추가
+  - Client: `startLevel3Conversation()` 함수 추가 (api.ts)
+  - Client: `startConversation` 훅 함수 추가 (useChat.ts)
+  - Client: 채팅창 열릴 때 자동 호출 (Game.tsx)
 
-**변경 파일:** `server/src/routes/chat.ts` (Level 3 엔드포인트)
+**변경 파일:**
+- `server/src/routes/chat.ts` (Level 3 start 엔드포인트)
+- `client/src/lib/api.ts` (startLevel3Conversation 함수)
+- `client/src/hooks/useChat.ts` (startConversation 함수)
+- `client/src/components/Game.tsx` (채팅창 열릴 때 자동 호출)
+
+### 스트리밍 응답 구현 ✅ 완료
+
+모든 레벨(1~4)에 스트리밍 적용 완료. 응답이 실시간으로 타이핑되듯 표시됨.
+
+**Server 변경:**
+- `chat.ts`: 각 레벨별 `/stream` 엔드포인트 추가
+  - `/chat/level1/stream`
+  - `/chat/level2/stream`
+  - `/chat/level3/stream`
+  - `/chat/level3/start/stream`
+  - `/chat/level4/stream`
+- Claude API `stream()` 메서드 사용
+- SSE(Server-Sent Events) 형식으로 응답
+
+**Client 변경:**
+- `api.ts`: 스트리밍 함수 추가
+  - `sendMessageByLevelStream()` - 콜백 기반 스트리밍
+  - `startLevel3ConversationStream()` - Level 3 시작 스트리밍
+- `useChat.ts`: 스트리밍 응답 실시간 업데이트
+  - 빈 메시지 먼저 추가 → 청크마다 내용 추가
+
+**장점:**
+- 첫 글자가 바로 표시되어 체감 응답 속도 향상
+- API 비용 동일 (토큰 수 기반 과금)
+- ChatGPT 스타일 UX
+
+### UI/UX 개선 ✅ 완료
+
+**채팅 UI 개선:**
+- [x] 타이핑 인디케이터 - 첫 청크 대기 중일 때만 "..." 애니메이션 표시
+- [x] 채팅창 자동 스크롤 - 새 메시지 시 하단으로 스크롤
+- [x] NPC 프로필 이미지 - NPC 색상 테마 기반 아이콘 (첫 글자)
+- [x] 메시지 시간 표시 - 각 메시지에 HH:MM 형식 타임스탬프
+- [x] 입력창 개선 - textarea로 변경, Enter 전송, Shift+Enter 줄바꿈, 자동 높이 조절
+
+**추가 기능:**
+- [x] 복사 버튼 - NPC 메시지 호버 시 📋 버튼, 클릭 시 클립보드 복사
+- [x] 피드백 버튼 (👍👎) - NPC 메시지 호버 시 좋아요/싫어요 버튼
+- [x] 퀵 리플라이 버튼 - NPC 레벨별 추천 질문 버튼 (대화 초반에만 표시)
+
+**모던 UI 디자인 개선:**
+- [x] 글래스모피즘 효과 - 채팅창 배경 블러 + 반투명 효과
+- [x] 그라데이션 배경 - NPC 색상 테마 기반 동적 배경
+- [x] 모던 메시지 버블 - 흰색 배경 + 섀도우 + 둥근 모서리
+- [x] 개선된 입력창 - 아이콘 전송 버튼 + 호버 애니메이션
+- [x] 세련된 헤더 - NPC 아바타 + 온라인 상태 표시
+- [x] 부드러운 트랜지션 - 버튼 호버/클릭 애니메이션
+
+**변경 파일:**
+- `client/src/components/ui/ChatMessage.tsx` - 모던 메시지 버블, 복사/피드백 버튼
+- `client/src/components/ui/ChatDialog.tsx` - 글래스모피즘, 모던 레이아웃, 퀵 리플라이
+
+**게임 경험 개선 (예정):**
+- [ ] NPC 말풍선 개선 - 대화 중 상태 표시
+- [ ] 사운드 효과 - 메시지 도착음, 대화 시작음
+- [ ] NPC idle 모션 - 대기 중 자연스러운 움직임
+
+**기능 개선 (예정):**
+- [ ] 대화 기록 저장 - localStorage 활용
+- [ ] 연결 상태 표시 - 서버 연결 끊김 알림
 
 ### 2. Level 4 Personality 구현 예정
 1. Supabase `user_affinity` 테이블 생성

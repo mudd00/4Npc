@@ -83,7 +83,46 @@ const CATEGORY_PROMPTS: Record<string, string> = {
 };
 
 // ============================================
-// Level 1: 기본 API (밤이)
+// Level 1: 기본 API (밤이) - 스트리밍
+// ============================================
+router.post('/chat/level1/stream', async (req: Request, res: Response) => {
+  try {
+    const { message } = req.body;
+
+    if (!message || typeof message !== 'string') {
+      res.status(400).json({ error: 'Message is required' });
+      return;
+    }
+
+    // SSE 헤더 설정
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const stream = await anthropic.messages.stream({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 512,
+      system: LEVEL1_PROMPT,
+      messages: [{ role: 'user', content: message }]
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (error) {
+    console.error('Level 1 stream error:', error);
+    res.write(`data: ${JSON.stringify({ error: 'Failed to get response' })}\n\n`);
+    res.end();
+  }
+});
+
+// ============================================
+// Level 1: 기본 API (밤이) - 일반 (하위호환)
 // ============================================
 router.post('/chat/level1', async (req: Request, res: Response) => {
   try {
@@ -112,7 +151,60 @@ router.post('/chat/level1', async (req: Request, res: Response) => {
 });
 
 // ============================================
-// Level 2: RAG 기반 (루나)
+// Level 2: RAG 기반 (루나) - 스트리밍
+// ============================================
+router.post('/chat/level2/stream', async (req: Request, res: Response) => {
+  try {
+    const { message } = req.body;
+
+    if (!message || typeof message !== 'string') {
+      res.status(400).json({ error: 'Message is required' });
+      return;
+    }
+
+    // 1. 사용자 질문 임베딩
+    const queryEmbedding = await embeddingService.embed(message);
+
+    // 2. 관련 지식 검색
+    const relevantDocs = await vectorStore.search(queryEmbedding, 3, 0.5);
+
+    // 3. 컨텍스트 구성
+    let context = '';
+    if (relevantDocs.length > 0) {
+      context = '\n\n## 참고 지식:\n' + relevantDocs
+        .map(doc => `[${doc.category}] ${doc.title}: ${doc.content}`)
+        .join('\n\n');
+    }
+
+    // SSE 헤더 설정
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const stream = await anthropic.messages.stream({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: LEVEL2_PROMPT + context,
+      messages: [{ role: 'user', content: message }]
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (error) {
+    console.error('Level 2 stream error:', error);
+    res.write(`data: ${JSON.stringify({ error: 'Failed to get response' })}\n\n`);
+    res.end();
+  }
+});
+
+// ============================================
+// Level 2: RAG 기반 (루나) - 일반 (하위호환)
 // ============================================
 router.post('/chat/level2', async (req: Request, res: Response) => {
   try {
@@ -159,7 +251,111 @@ router.post('/chat/level2', async (req: Request, res: Response) => {
 });
 
 // ============================================
-// Level 3: Memory 시스템 (해나) - 대화 기억 기능
+// Level 3: Memory 시스템 (해나) - 스트리밍
+// ============================================
+router.post('/chat/level3/stream', async (req: Request, res: Response) => {
+  try {
+    const { message, userId } = req.body;
+
+    if (!message || typeof message !== 'string') {
+      res.status(400).json({ error: 'Message is required' });
+      return;
+    }
+
+    const finalUserId = userId || 'anonymous';
+    const npcId = 'npc-level3';
+
+    // 1. 이전 대화 기록 조회
+    const previousConversations = await memoryService.getRecentConversations(
+      finalUserId,
+      npcId,
+      10
+    );
+    const conversationHistory = memoryService.formatConversationHistory(previousConversations);
+
+    // 2. 유저 요약 정보 조회
+    const userSummary = await memoryService.getUserSummary(finalUserId, npcId);
+
+    // 3. RAG 검색
+    const queryEmbedding = await embeddingService.embed(message);
+    const relevantDocs = await vectorStore.search(queryEmbedding, 2, 0.5);
+
+    // 4. 첫 방문 감지
+    const isFirstVisit = previousConversations.length === 0;
+
+    // 5. 컨텍스트 구성
+    let context = '';
+    if (isFirstVisit) {
+      context += '\n\n## 상황:\n처음 온 손님입니다. 반갑게 인사하고 이름을 물어보세요.';
+    } else {
+      if (userSummary) {
+        context += `\n\n## 이 손님에 대해 기억하는 것:\n${userSummary}`;
+      }
+      if (conversationHistory) {
+        context += `\n\n## 최근 대화 기록:\n${conversationHistory}`;
+      }
+    }
+    if (relevantDocs.length > 0) {
+      context += '\n\n## 참고 지식:\n' + relevantDocs
+        .map(doc => `[${doc.category}] ${doc.title}: ${doc.content}`)
+        .join('\n\n');
+    }
+
+    // SSE 헤더 설정
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // 6. Claude 스트리밍 호출
+    const stream = await anthropic.messages.stream({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: LEVEL3_PROMPT + context,
+      messages: [{ role: 'user', content: message }]
+    });
+
+    let fullResponse = '';
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        fullResponse += event.delta.text;
+        res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
+      }
+    }
+
+    // 7. 대화 기록 저장 (스트리밍 완료 후)
+    await memoryService.saveConversation(finalUserId, npcId, message, fullResponse);
+
+    // 8. 특정 조건에서 유저 요약 업데이트
+    if (previousConversations.length > 0 && previousConversations.length % 10 === 0) {
+      const summaryResponse = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 200,
+        system: '대화 내용을 바탕으로 이 손님에 대한 핵심 정보를 2-3문장으로 요약해주세요.',
+        messages: [{
+          role: 'user',
+          content: `대화 기록:\n${conversationHistory}\n\n최신 대화:\n손님: ${message}\n해나: ${fullResponse}`
+        }]
+      });
+
+      const summaryContent = summaryResponse.content[0];
+      const newSummary = summaryContent?.type === 'text' ? summaryContent.text : '';
+      if (newSummary) {
+        await memoryService.updateUserSummary(finalUserId, npcId, newSummary);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (error) {
+    console.error('Level 3 stream error:', error);
+    res.write(`data: ${JSON.stringify({ error: 'Failed to get response' })}\n\n`);
+    res.end();
+  }
+});
+
+// ============================================
+// Level 3: Memory 시스템 (해나) - 일반 (하위호환)
 // ============================================
 router.post('/chat/level3', async (req: Request, res: Response) => {
   try {
@@ -261,7 +457,177 @@ router.post('/chat/level3', async (req: Request, res: Response) => {
 });
 
 // ============================================
-// Level 4: Personality 시스템 (별이) - 임시 구현
+// Level 3: 대화 시작 - 스트리밍 (채팅창 열릴 때 자동 호출)
+// ============================================
+router.post('/chat/level3/start/stream', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.body;
+    const finalUserId = userId || 'anonymous';
+    const npcId = 'npc-level3';
+
+    // 이전 대화 기록 조회
+    const previousConversations = await memoryService.getRecentConversations(
+      finalUserId,
+      npcId,
+      10
+    );
+    const conversationHistory = memoryService.formatConversationHistory(previousConversations);
+    const userSummary = await memoryService.getUserSummary(finalUserId, npcId);
+    const isFirstVisit = previousConversations.length === 0;
+
+    // 컨텍스트 구성
+    let context = '';
+    if (isFirstVisit) {
+      context += '\n\n## 상황:\n처음 온 손님입니다. 반갑게 인사하고 이름을 물어보세요.';
+    } else {
+      if (userSummary) {
+        context += `\n\n## 이 손님에 대해 기억하는 것:\n${userSummary}`;
+      }
+      if (conversationHistory) {
+        context += `\n\n## 최근 대화 기록:\n${conversationHistory}`;
+      }
+      context += '\n\n## 상황:\n다시 온 손님입니다. 반갑게 맞이하고 기억하는 내용을 자연스럽게 언급하세요.';
+    }
+
+    // SSE 헤더 설정
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const stream = await anthropic.messages.stream({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: LEVEL3_PROMPT + context,
+      messages: [{ role: 'user', content: '(손님이 가게에 들어왔습니다)' }]
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (error) {
+    console.error('Level 3 start stream error:', error);
+    res.write(`data: ${JSON.stringify({ error: 'Failed to get response' })}\n\n`);
+    res.end();
+  }
+});
+
+// ============================================
+// Level 3: 대화 시작 - 일반 (하위호환)
+// ============================================
+router.post('/chat/level3/start', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.body;
+    const finalUserId = userId || 'anonymous';
+    const npcId = 'npc-level3';
+
+    // 이전 대화 기록 조회
+    const previousConversations = await memoryService.getRecentConversations(
+      finalUserId,
+      npcId,
+      10
+    );
+    const conversationHistory = memoryService.formatConversationHistory(previousConversations);
+
+    // 유저 요약 정보 조회
+    const userSummary = await memoryService.getUserSummary(finalUserId, npcId);
+
+    // 첫 방문 감지
+    const isFirstVisit = previousConversations.length === 0;
+
+    // 컨텍스트 구성
+    let context = '';
+
+    if (isFirstVisit) {
+      context += '\n\n## 상황:\n처음 온 손님입니다. 반갑게 인사하고 이름을 물어보세요.';
+    } else {
+      if (userSummary) {
+        context += `\n\n## 이 손님에 대해 기억하는 것:\n${userSummary}`;
+      }
+      if (conversationHistory) {
+        context += `\n\n## 최근 대화 기록:\n${conversationHistory}`;
+      }
+      context += '\n\n## 상황:\n다시 온 손님입니다. 반갑게 맞이하고 기억하는 내용을 자연스럽게 언급하세요.';
+    }
+
+    // Claude API 호출 (NPC가 먼저 인사)
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: LEVEL3_PROMPT + context,
+      messages: [{ role: 'user', content: '(손님이 가게에 들어왔습니다)' }]
+    });
+
+    const textContent = response.content[0];
+    const responseText = textContent?.type === 'text' ? textContent.text : '';
+
+    res.json({
+      response: responseText,
+      isFirstVisit,
+      hasMemory: previousConversations.length > 0,
+    });
+  } catch (error) {
+    console.error('Level 3 start error:', error);
+    res.status(500).json({ error: 'Failed to get response' });
+  }
+});
+
+// ============================================
+// Level 4: Personality 시스템 (별이) - 스트리밍
+// ============================================
+router.post('/chat/level4/stream', async (req: Request, res: Response) => {
+  try {
+    const { message } = req.body;
+
+    if (!message || typeof message !== 'string') {
+      res.status(400).json({ error: 'Message is required' });
+      return;
+    }
+
+    const affinity = 50; // 임시 호감도 (0-100)
+
+    let personalityModifier = '';
+    if (affinity < 30) {
+      personalityModifier = '\n\n## 현재 상태: 경계 중\n- 짧고 무뚝뚝하게 대답합니다\n- "...뭐야", "...귀찮은데" 같은 말투를 사용합니다';
+    } else if (affinity < 70) {
+      personalityModifier = '\n\n## 현재 상태: 보통\n- 기본적인 대화를 합니다\n- 적당히 친절합니다';
+    } else {
+      personalityModifier = '\n\n## 현재 상태: 친밀\n- 친절하고 상세하게 대답합니다\n- "당신의 운명에 좋은 기운이..." 같은 긍정적인 점괘를 봐줍니다';
+    }
+
+    // SSE 헤더 설정
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const stream = await anthropic.messages.stream({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: LEVEL4_PROMPT + personalityModifier,
+      messages: [{ role: 'user', content: message }]
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (error) {
+    console.error('Level 4 stream error:', error);
+    res.write(`data: ${JSON.stringify({ error: 'Failed to get response' })}\n\n`);
+    res.end();
+  }
+});
+
+// ============================================
+// Level 4: Personality 시스템 (별이) - 일반 (하위호환)
 // TODO: 호감도 시스템 및 감정 상태 추가
 // ============================================
 router.post('/chat/level4', async (req: Request, res: Response) => {

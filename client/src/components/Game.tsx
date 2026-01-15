@@ -17,7 +17,14 @@ export default function Game() {
   const [isQuickInfoLoading, setIsQuickInfoLoading] = useState(false);
 
   // NPC 레벨에 따라 다른 API 엔드포인트 사용
-  const { messages, isLoading, error, send, clearMessages } = useChat(nearNPC?.level ?? 2);
+  const { messages, isLoading, error, send, clearMessages, startConversation } = useChat(nearNPC?.level ?? 2);
+
+  // Level 3: 채팅창 열릴 때 NPC가 먼저 인사
+  useEffect(() => {
+    if (isChatOpen && nearNPC?.level === 3 && messages.length === 0) {
+      startConversation();
+    }
+  }, [isChatOpen, nearNPC?.level, messages.length, startConversation]);
 
   // F키로 메뉴 열기
   useEffect(() => {
