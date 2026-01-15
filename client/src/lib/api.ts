@@ -82,7 +82,8 @@ export async function sendMessageByLevelStream(
   level: NPCLevel,
   onChunk: (text: string) => void,
   onDone: () => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  onAffinity?: (affinity: { affinity: number; affinityLevel: string }) => void
 ): Promise<void> {
   const endpoint = LEVEL_STREAM_ENDPOINTS[level];
 
@@ -129,6 +130,17 @@ export async function sendMessageByLevelStream(
             const parsed = JSON.parse(data);
             if (parsed.text) {
               onChunk(parsed.text);
+            }
+            // 호감도 정보 수신 (변화량 + 이유 포함)
+            if (parsed.affinity !== undefined && onAffinity) {
+              onAffinity({
+                affinity: parsed.affinity,
+                affinityLevel: parsed.affinityLevel,
+                affinityDelta: parsed.affinityDelta,
+                levelChanged: parsed.levelChanged,
+                newLevel: parsed.affinityNewLevel,
+                affinityReason: parsed.affinityReason,
+              });
             }
             if (parsed.error) {
               onError(new Error(parsed.error));
@@ -224,6 +236,129 @@ export async function startLevel3ConversationStream(
   } catch (error) {
     onError(error instanceof Error ? error : new Error('Unknown error'));
   }
+}
+
+// Level 4 대화 시작 (스트리밍)
+export async function startLevel4ConversationStream(
+  onChunk: (text: string) => void,
+  onDone: (affinityInfo?: { affinity: number; affinityLevel: string }) => void,
+  onError: (error: Error) => void
+): Promise<void> {
+  try {
+    const response = await fetch(`${API_URL}/chat/level4/start/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId: getUserId() }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to start conversation');
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let affinityInfo: { affinity: number; affinityLevel: string } | undefined;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') {
+            onDone(affinityInfo);
+            return;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.text) {
+              onChunk(parsed.text);
+            }
+            if (parsed.affinity !== undefined) {
+              affinityInfo = {
+                affinity: parsed.affinity,
+                affinityLevel: parsed.affinityLevel,
+              };
+            }
+            if (parsed.error) {
+              onError(new Error(parsed.error));
+              return;
+            }
+          } catch {
+            // JSON 파싱 실패 무시
+          }
+        }
+      }
+    }
+
+    onDone(affinityInfo);
+  } catch (error) {
+    onError(error instanceof Error ? error : new Error('Unknown error'));
+  }
+}
+
+// NPC ID 매핑
+const NPC_IDS: Record<NPCLevel, string> = {
+  1: 'npc-level1',
+  2: 'npc-level2',
+  3: 'npc-level3',
+  4: 'npc-level4',
+};
+
+// 관계 상태 조회
+export interface RelationshipStatus {
+  hasMemory: boolean;
+  affinity: number | null;
+  affinityLevel: string | null;
+}
+
+export async function getRelationshipStatus(level: NPCLevel): Promise<RelationshipStatus> {
+  const userId = getUserId();
+  const npcId = NPC_IDS[level];
+
+  const response = await fetch(`${API_URL}/relationship-status`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userId, npcId, level }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to get relationship status');
+  }
+
+  return response.json();
+}
+
+// 관계 리셋 (메모리 + 호감도 초기화)
+export async function resetRelationship(level: NPCLevel): Promise<{ success: boolean }> {
+  const userId = getUserId();
+  const npcId = NPC_IDS[level];
+
+  const response = await fetch(`${API_URL}/reset`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userId, npcId }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to reset relationship');
+  }
+
+  return response.json();
 }
 
 export async function getQuickInfo(category: InfoCategory): Promise<string> {

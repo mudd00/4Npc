@@ -5,6 +5,35 @@
 
 ---
 
+## ⚡ 빠른 상태 요약 (새 세션용)
+
+**마지막 업데이트**: 2025-01-15
+
+**현재 상태**: ✅ **개발 완료** - 배포 준비 단계
+
+**완료된 핵심 기능**:
+- Level 1~4 NPC 시스템 전체 구현 완료
+- 호감도 시스템, 메모리 시스템, RAG 시스템 모두 동작
+- UI/UX 개선 (호감도 피드백, 리셋 버튼, 관계 표시, 디버그 모드 등) 완료
+- 데모 가이드, 기술 설명 패널, 대화 기록 저장 등 추가 기능 완료
+
+**다음 할 일**:
+1. 배포 (Railway + Vercel)
+2. (선택) 추가 개선 사항
+
+**실행 방법**:
+```bash
+# Terminal 1 - Server
+cd server && npm run dev
+
+# Terminal 2 - Client
+cd client && npm run dev
+
+# 접속: http://localhost:5173
+```
+
+---
+
 ## 프로젝트 개요
 
 Claude API를 활용한 4단계 AI NPC 시스템.
@@ -139,7 +168,8 @@ Claude API를 활용한 4단계 AI NPC 시스템.
 - [x] /api/chat/level1 - 기본 Claude API (밤이)
 - [x] /api/chat/level2 - RAG 기반 (루나)
 - [x] /api/chat/level3 - Memory (해나) ✅ 완성
-- [x] /api/chat/level4 - Personality (별이) - 임시 구현
+- [x] /api/chat/level4 - Personality + 호감도 (별이) ✅ 완성
+- [x] /api/chat/level4/start/stream - Level 4 대화 시작 ✅
 - [x] /api/quick-info - Level 2 빠른 정보 (말풍선)
 
 ---
@@ -167,15 +197,79 @@ Claude API를 활용한 4단계 AI NPC 시스템.
 
 ---
 
-## 현재 상태
+### Level 4: Personality NPC ✅ 완료
 
-**Level 1~3 완료, Level 4 진행 예정**
+#### 호감도 시스템 설계
+- **시작 호감도**: 0점 (경계 상태에서 시작)
+- **최대 호감도**: 100점
+- **호감도 단계**:
+  - 0~25: 경계 (stranger) - 신비롭고 거리감 있는 태도
+  - 26~50: 보통 (acquaintance) - 정중하지만 거리감
+  - 51~75: 친밀 (friend) - 부드럽고 친근한 태도
+  - 76~100: 절친 (close_friend) - 편한 말투, 비밀 공유
+
+#### Supabase 테이블 ✅
+- [x] `user_affinity` 테이블 - 호감도 저장
+  - user_id, npc_id, affinity_score, total_conversations, last_interaction
+- [x] `get_user_affinity` 함수 - 호감도 조회
+- [x] `update_user_affinity` 함수 - 호감도 업데이트 (upsert)
+- [x] SQL 파일: `server/src/sql/affinity.sql`
+
+#### Server 구현 ✅
+- [x] affinityService.ts - 호감도 조회/업데이트, 레벨별 프롬프트 생성
+  - `getAffinity()` - 호감도 조회
+  - `updateAffinity()` - 호감도 업데이트
+  - `getPersonalityPrompt()` - 호감도 기반 시스템 프롬프트 생성
+  - `AFFINITY_ANALYSIS_PROMPT` - 대화 분석용 프롬프트
+- [x] chat.ts Level 4 엔드포인트 업데이트
+  - `/chat/level4/stream` - 스트리밍 + 호감도
+  - `/chat/level4` - 일반 + 호감도
+  - `/chat/level4/start/stream` - 대화 시작 (NPC 먼저 인사)
+  - `analyzeAndUpdateAffinity()` - 대화 분석 후 호감도 변화
+
+#### Client 구현 ✅
+- [x] api.ts - `startLevel4ConversationStream()` 함수 추가
+- [x] useChat.ts - Level 4 시작 대화 지원, affinityInfo 상태 추가
+- [x] Game.tsx - Level 4 자동 대화 시작, affinityInfo 전달
+- [x] ChatDialog.tsx - 호감도 바 UI 표시 (Level 4 전용)
+
+#### 호감도 변화 로직
+- **증가 요인**: 예의 바른 인사(+2), 관심 있는 질문(+1), 칭찬/감사(+3)
+- **감소 요인**: 무례한 말(-3), 짜증내는 말투(-2), 무시하는 태도(-2)
+- Claude가 대화 분석 후 JSON으로 호감도 변화량 반환
+
+---
+
+### UI/UX 개선 (추가 기능) ✅ 완료
+
+#### 1. 호감도 시각적 피드백
+- [x] 호감도 변화 시 바 색상 플래시 (초록/빨강)
+- [x] "+3" / "-2" 같은 변화량 표시 (애니메이션)
+- [x] 레벨 변화 시 토스트 알림 ("관계가 '친밀'로 발전했습니다!")
+
+#### 2. 리셋 버튼 (데모용)
+- [x] Level 3, 4 채팅창 헤더에 리셋 버튼 추가
+- [x] 클릭 시 확인 다이얼로그
+- [x] 메모리 + 호감도 초기화
+- [x] `/api/reset` 엔드포인트 추가
+
+#### 3. NPC 위 관계 표시
+- [x] Level 3 (해나): "기억함 ✓" 표시 (재방문 시)
+- [x] Level 4 (별이): 호감도 아이콘 표시 (😐→🙂→😊→💜)
+- [x] `/api/relationship-status` 엔드포인트 추가
+
+---
+
+## 현재 상태 (2025-01-15 최신)
+
+**🎉 Level 1~4 + 모든 추가 기능 완료**
 
 ```
-Level 1 ✅ 밤이 (기본 API) - 완료
-Level 2 ✅ 루나 (RAG) - 완료
-Level 3 ✅ 해나 (Memory) - 완료
-Level 4 🔄 별이 (Personality) - 임시 구현, TODO: 호감도 DB
+Core Features ✅
+├── Level 1 ✅ 밤이 (기본 API) - Claude API 기본 연동
+├── Level 2 ✅ 루나 (RAG) - 세계관 지식 검색
+├── Level 3 ✅ 해나 (Memory) - 대화 기록 + 유저 정보 요약
+└── Level 4 ✅ 별이 (Personality) - 호감도 시스템 + 태도 변화
 
 4 NPC 배치 ✅ 일렬 배치
 ├── (-9, 0, -2): 밤이 (Lv.1)
@@ -183,12 +277,18 @@ Level 4 🔄 별이 (Personality) - 임시 구현, TODO: 호감도 DB
 ├── (3, 0, -2): 해나 (Lv.3)
 └── (9, 0, -2): 별이 (Lv.4)
 
-레벨별 차별화 ✅
-├── Level 1: 대화만 가능 (기억 없음)
-├── Level 2: 대화 + RAG 메뉴 (마을 정보, 장소, 소문)
-├── Level 3: 대화 + 메모리 (이전 대화 기억, 유저 정보 요약)
-└── Level 4: 대화만 가능 (TODO: 호감도 시스템)
+추가 기능 ✅
+├── 호감도 시각적 피드백 (바 플래시, 변화량 표시, 레벨업 토스트)
+├── 리셋 버튼 (Level 3, 4 - 메모리/호감도 초기화)
+├── NPC 위 관계 표시 (기억함 ✓, 호감도 아이콘)
+├── 레벨별 기술 설명 패널 (TechInfoPanel)
+├── NPC 바라보기 애니메이션 (플레이어 방향으로 회전)
+├── 대화 기록 세션 유지 (레벨별 저장)
+├── 첫 방문자 데모 가이드 (DemoGuide)
+└── 디버그 모드 (호감도 변화 이유 실시간 표시)
 ```
+
+**상태**: 개발 완료, 테스트 및 배포 준비 단계
 
 ---
 
@@ -254,11 +354,55 @@ cd client && npm run dev
 
 ## 다음 작업
 
-### 1. 테스트 (현재 진행 중)
-- [x] Level 2 RAG 지식 데이터 seed 완료 (knowledge 테이블 15개)
+### 🚀 남은 작업
+
+#### 1. 테스트 확인
+- [x] Level 1 Basic API NPC (밤이) 테스트 완료
 - [x] Level 2 RAG NPC (루나) 테스트 완료
-- [ ] Level 3 Memory NPC (해나) 테스트 - **UX 개선 완료, 테스트 진행 중**
-- [ ] Level 4 Personality NPC (별이) 테스트
+- [x] Level 3 Memory NPC (해나) 테스트 완료
+- [x] Level 4 Personality NPC (별이) 테스트 완료
+- [x] 호감도 시스템 동작 확인 완료
+
+#### 2. 배포 (예정)
+- [ ] Server → Railway 배포
+- [ ] Client → Vercel 배포
+- [ ] 환경변수 설정
+
+#### 3. 선택적 개선 (필요 시)
+- [ ] NPC idle 애니메이션 다양화
+- [ ] 모바일 반응형 UI
+- [ ] 다국어 지원
+
+---
+
+### ✅ 최근 완료 작업 (2025-01-15)
+
+#### 추가 개선 작업 5개 완료
+
+| # | 작업 | 설명 |
+|---|------|------|
+| 1 | 레벨별 기술 설명 패널 | NPC 근처에서 좌측 하단에 기술 스택 설명 표시 |
+| 2 | NPC 바라보기 애니메이션 | 플레이어 접근 시 NPC가 부드럽게 바라봄 |
+| 3 | 대화 기록 저장 | 세션 동안 레벨별 대화 내용 유지 |
+| 4 | 데모 가이드 | 첫 접속 시 4단계 온보딩 가이드 표시 |
+| 5 | 디버그 모드 | Level 4에서 호감도 변화 이유 실시간 표시 |
+
+**새로 추가된 컴포넌트:**
+- `client/src/components/ui/TechInfoPanel.tsx` - 레벨별 기술 스택/기능 설명 패널
+- `client/src/components/ui/DemoGuide.tsx` - 첫 방문자용 온보딩 가이드
+
+**변경된 파일:**
+- `NPC.tsx` - useFrame으로 플레이어 바라보기 애니메이션 추가
+- `Scene.tsx` - playerPosition 상태 추가 및 NPC에 전달
+- `useChat.ts` - 레벨별 메시지 저장소 (messagesByLevel, affinityByLevel)
+- `Game.tsx` - DemoGuide 추가, 채팅창 닫을 때 메시지 유지
+- `ChatDialog.tsx` - 디버그 모드 토글 및 패널 추가 (Level 4 전용)
+- `chat.ts` (Server) - affinityReason을 SSE 이벤트에 포함
+- `api.ts` - affinityReason 파싱 추가
+
+#### 호감도 시스템 조정
+- 존댓말 점수: 경계 단계(0~25)에서만 +1, 보통 단계(26~50)에서는 0으로 변경
+- 변경 파일: `affinityService.ts`
 
 ### Level 3 구조 개선 ✅ 완료
 
@@ -338,25 +482,14 @@ cd client && npm run dev
 - `client/src/components/ui/ChatMessage.tsx` - 모던 메시지 버블, 복사/피드백 버튼
 - `client/src/components/ui/ChatDialog.tsx` - 글래스모피즘, 모던 레이아웃, 퀵 리플라이
 
-**게임 경험 개선 (예정):**
-- [ ] NPC 말풍선 개선 - 대화 중 상태 표시
-- [ ] 사운드 효과 - 메시지 도착음, 대화 시작음
-- [ ] NPC idle 모션 - 대기 중 자연스러운 움직임
+**게임 경험 개선 (선택 사항):**
+- [x] NPC 바라보기 - 플레이어 접근 시 NPC가 바라봄 ✅ 완료
+- [ ] 사운드 효과 - 메시지 도착음, 대화 시작음 (제외됨 - 데모 목적상 불필요)
+- [ ] NPC idle 모션 다양화 - 대기 중 자연스러운 움직임
 
-**기능 개선 (예정):**
-- [ ] 대화 기록 저장 - localStorage 활용
-- [ ] 연결 상태 표시 - 서버 연결 끊김 알림
-
-### 2. Level 4 Personality 구현 예정
-1. Supabase `user_affinity` 테이블 생성
-2. 호감도 조회/업데이트 기능 구현
-3. 호감도에 따른 응답 변화 (친밀/보통/경계)
-4. 대화 내용에 따른 호감도 증감
-
-### 3. 배포 (최종 단계)
-1. Server → Railway
-2. Client → Vercel
-3. 환경변수 설정
+**기능 개선:**
+- [x] 대화 기록 저장 - 세션 동안 레벨별 유지 ✅ 완료
+- [ ] 연결 상태 표시 - 서버 연결 끊김 알림 (선택 사항)
 
 ---
 
@@ -384,25 +517,27 @@ cd client && npm run dev
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── three/
-│   │   │   │   ├── Scene.tsx       # R3F Canvas + Physics
+│   │   │   │   ├── Scene.tsx       # R3F Canvas + Physics + playerPosition
 │   │   │   │   ├── Map.tsx         # 맵 + 물리 충돌
 │   │   │   │   ├── Player.tsx      # Rapier 기반 플레이어
-│   │   │   │   ├── NPC.tsx         # NPC + 이름표
+│   │   │   │   ├── NPC.tsx         # NPC + 이름표 + 바라보기 애니메이션
 │   │   │   │   ├── CharacterModel.tsx  # GLTF 모델 + 애니메이션
 │   │   │   │   ├── SpeechBubble.tsx    # [L2] RAG 말풍선
 │   │   │   │   └── ThirdPersonCamera.tsx  # 마우스 회전 카메라
 │   │   │   ├── ui/
-│   │   │   │   ├── ChatDialog.tsx      # 대화창
+│   │   │   │   ├── ChatDialog.tsx      # 대화창 + 호감도 UI + 디버그 모드
 │   │   │   │   ├── ChatMessage.tsx     # 메시지 버블
 │   │   │   │   ├── InteractionPrompt.tsx  # F키 안내
-│   │   │   │   └── InteractionMenu.tsx    # [L2] 상호작용 메뉴
-│   │   │   └── Game.tsx            # 게임 로직 통합
+│   │   │   │   ├── InteractionMenu.tsx    # [L2] 상호작용 메뉴
+│   │   │   │   ├── TechInfoPanel.tsx   # [NEW] 레벨별 기술 설명 패널
+│   │   │   │   └── DemoGuide.tsx       # [NEW] 첫 방문자 온보딩 가이드
+│   │   │   └── Game.tsx            # 게임 로직 통합 + 관계 상태 관리
 │   │   ├── hooks/
 │   │   │   ├── useKeyboardControls.ts
-│   │   │   ├── useChat.ts
+│   │   │   ├── useChat.ts          # 레벨별 메시지 저장소
 │   │   │   └── useInteraction.ts
 │   │   ├── lib/
-│   │   │   └── api.ts              # API 호출 (+ getQuickInfo)
+│   │   │   └── api.ts              # API 호출 (+ affinityReason)
 │   │   └── types/
 │   │       └── index.ts
 │   ├── public/
@@ -413,15 +548,17 @@ cd client && npm run dev
 ├── server/                         # Backend
 │   ├── src/
 │   │   ├── routes/
-│   │   │   └── chat.ts             # /api/chat + /api/quick-info
+│   │   │   └── chat.ts             # 모든 레벨 API + 스트리밍 + 리셋
 │   │   ├── services/
 │   │   │   ├── embeddingService.ts # [L2] OpenAI 임베딩
 │   │   │   ├── vectorStore.ts      # [L2] Supabase 벡터 검색
-│   │   │   └── memoryService.ts    # [L3] 대화 기록 관리
+│   │   │   ├── memoryService.ts    # [L3] 대화 기록 관리
+│   │   │   └── affinityService.ts  # [L4] 호감도 시스템
 │   │   ├── data/
 │   │   │   └── knowledge.json      # [L2] 세계관 지식 데이터
 │   │   ├── sql/
-│   │   │   └── conversations.sql   # [L3] 메모리 테이블 SQL
+│   │   │   ├── conversations.sql   # [L3] 메모리 테이블 SQL
+│   │   │   └── affinity.sql        # [L4] 호감도 테이블 SQL
 │   │   ├── scripts/
 │   │   │   ├── supabase-setup.sql  # [L2] DB 설정 SQL
 │   │   │   └── seedKnowledge.ts    # [L2] 지식 시드 스크립트
@@ -430,9 +567,76 @@ cd client && npm run dev
 │   └── package.json
 │
 ├── CLAUDE.md                       # Claude AI 작업 지침
-├── progress.md                     # 이 파일
+├── progress.md                     # 이 파일 (작업 진행 상황)
 └── README.md
 ```
+
+---
+
+## NPC 성격/호감도 설계 철학
+
+> **핵심 원칙**: NPC는 진짜 감정이 있는 존재처럼 느껴져야 한다.
+
+### 1. NPC별 고유 성격 설계
+
+각 NPC는 **고유한 말투 선호도**를 가져야 합니다. 호감도 시스템을 구현할 때, 단순히 "친절하면 +, 무례하면 -" 가 아니라 **해당 NPC의 성격에 맞게** 세부 규칙을 설계해야 합니다.
+
+**예시 - 별이 (점술가)**:
+- 경계 단계(0~25): 존댓말 +1, 반말 -2 (처음엔 예의를 중시)
+- 보통 단계(26~50): 존댓말 0, 반말 -1
+- 친밀/절친 단계(51~100): 존댓말 0, 반말 0 (친해지면 말투 자유)
+
+다른 NPC는 다른 규칙을 가질 수 있습니다:
+- **활발한 NPC**: 처음부터 반말에 관대할 수 있음
+- **귀족 NPC**: 높은 호감도에서도 존댓말 선호
+- **어린 NPC**: 반말을 쓰면 오히려 친근하게 느낄 수 있음
+
+### 2. 호감도 변화 = 내용 점수 + 말투 점수
+
+호감도 변화량은 **두 가지 요소**를 합산하여 계산합니다:
+
+```
+최종 호감도 변화 = 내용 점수 + 말투 점수
+```
+
+**내용 점수** (모든 NPC 공통):
+- 인사: +1
+- 관심 있는 질문: +1
+- 칭찬/감사: +3
+- 공감 표현: +2
+- 호감 표현: +3
+- 짜증/화: -2
+- 무시하는 태도: -2
+- 욕설/모욕: -3
+
+**말투 점수** (NPC별, 호감도 단계별 다름):
+- 현재 호감도 단계에 따라 동적으로 적용
+- NPC의 성격에 맞게 커스터마이징
+
+### 3. 관계 진행 마일스톤
+
+높은 호감도에 도달하면 **특별한 이벤트**를 제안할 수 있습니다:
+- 친밀(51~75): "이제 편하게 말 놓으셔도 돼요" 같은 제안
+- 절친(76~100): 비밀 이야기 공유, 반말 사용
+
+이러한 마일스톤은 관계 발전을 실감나게 합니다.
+
+### 4. 구현 시 체크리스트
+
+새 NPC를 만들 때 반드시 정의해야 할 것들:
+- [ ] 기본 성격 및 말투
+- [ ] 호감도 단계별 태도 변화 (4단계)
+- [ ] 말투 점수 규칙 (호감도 단계별)
+- [ ] 관계 마일스톤 이벤트
+- [ ] 고유한 대화 스타일 (신비로운, 활발한, 차분한 등)
+
+### 5. 현재 구현 상태 (별이)
+
+`affinityService.ts`에 구현된 함수들:
+- `getAffinityLevel(score)`: 점수 → 레벨 변환
+- `getPersonalityPrompt(affinityData)`: 호감도 기반 시스템 프롬프트
+- `getSpeechStyleScore(affinityScore, isFormal)`: 말투 점수 계산
+- `getAffinityAnalysisPrompt(affinityScore)`: 호감도 단계별 분석 프롬프트
 
 ---
 

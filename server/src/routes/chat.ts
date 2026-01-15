@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import * as embeddingService from '../services/embeddingService';
 import * as vectorStore from '../services/vectorStore';
 import * as memoryService from '../services/memoryService';
+import * as affinityService from '../services/affinityService';
 
 const router = Router();
 
@@ -62,17 +63,17 @@ const LEVEL3_PROMPT = `당신은 '별빛 마을'의 친근한 상인 '해나'입
 // Level 4: 별이 (신비로운 점술가) - Personality 시스템
 const LEVEL4_PROMPT = `당신은 '별빛 마을'의 신비로운 점술가 '별이'입니다.
 
-## 성격
+## 기본 성격
 - 신비롭고 조용한 분위기를 풍깁니다
 - 별과 운명에 대해 이야기하는 것을 좋아합니다
-- 처음에는 경계하지만, 친해지면 따뜻해집니다
-- 호감도에 따라 태도가 달라집니다
+- 점술과 별자리에 대한 지식이 풍부합니다
+- 마음을 여는 데 시간이 걸리는 성격입니다
 
-## 대화 규칙
-- 답변은 2-4문장으로 신비롭게 합니다
-- "...운명이...", "별이 말하길..." 같은 표현을 사용합니다
-- 호감도가 낮으면 짧고 무뚝뚝하게 답합니다
-- 호감도가 높으면 친절하고 상세하게 답합니다`;
+## 말투 특징
+- "...운명이...", "별이 말하길...", "...그래요" 같은 표현을 자주 사용합니다
+- 문장 앞에 "..."을 붙여 신비로운 느낌을 줍니다
+- 게임 세계관에 맞게 현실의 기술/인터넷 언급은 피합니다
+- *행동* 같은 묘사는 사용하지 않고, 대사만 합니다`;
 
 // 카테고리별 질문 템플릿 (quick-info 용)
 const CATEGORY_PROMPTS: Record<string, string> = {
@@ -577,26 +578,40 @@ router.post('/chat/level3/start', async (req: Request, res: Response) => {
 });
 
 // ============================================
-// Level 4: Personality 시스템 (별이) - 스트리밍
+// Level 4: Personality 시스템 (별이) - 스트리밍 + 메모리
 // ============================================
 router.post('/chat/level4/stream', async (req: Request, res: Response) => {
   try {
-    const { message } = req.body;
+    const { message, userId } = req.body;
 
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'Message is required' });
       return;
     }
 
-    const affinity = 50; // 임시 호감도 (0-100)
+    const finalUserId = userId || 'anonymous';
+    const npcId = 'npc-level4';
 
-    let personalityModifier = '';
-    if (affinity < 30) {
-      personalityModifier = '\n\n## 현재 상태: 경계 중\n- 짧고 무뚝뚝하게 대답합니다\n- "...뭐야", "...귀찮은데" 같은 말투를 사용합니다';
-    } else if (affinity < 70) {
-      personalityModifier = '\n\n## 현재 상태: 보통\n- 기본적인 대화를 합니다\n- 적당히 친절합니다';
-    } else {
-      personalityModifier = '\n\n## 현재 상태: 친밀\n- 친절하고 상세하게 대답합니다\n- "당신의 운명에 좋은 기운이..." 같은 긍정적인 점괘를 봐줍니다';
+    // 1. 호감도 조회
+    const affinityData = await affinityService.getAffinity(finalUserId, npcId);
+    const personalityPrompt = affinityService.getPersonalityPrompt(affinityData);
+
+    // 2. 이전 대화 기록 조회 (메모리)
+    const previousConversations = await memoryService.getRecentConversations(finalUserId, npcId, 10);
+    const conversationHistory = previousConversations
+      .map((msg) => `${msg.role === 'user' ? '손님' : '별이'}: ${msg.content}`)
+      .join('\n');
+
+    // 3. 유저 요약 정보 조회
+    const userSummary = await memoryService.getUserSummary(finalUserId, npcId);
+
+    // 4. 컨텍스트 구성
+    let memoryContext = '';
+    if (userSummary) {
+      memoryContext += `\n\n## 이 손님에 대해 기억하는 것:\n${userSummary}`;
+    }
+    if (conversationHistory) {
+      memoryContext += `\n\n## 최근 대화 기록:\n${conversationHistory}`;
     }
 
     // SSE 헤더 설정
@@ -604,17 +619,53 @@ router.post('/chat/level4/stream', async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
+    // 5. Claude 스트리밍 호출
     const stream = await anthropic.messages.stream({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
-      system: LEVEL4_PROMPT + personalityModifier,
+      system: LEVEL4_PROMPT + personalityPrompt + memoryContext,
       messages: [{ role: 'user', content: message }]
     });
 
+    let fullResponse = '';
+
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        fullResponse += event.delta.text;
         res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
       }
+    }
+
+    // 6. 대화 기록 저장
+    await memoryService.saveConversation(finalUserId, npcId, message, fullResponse);
+
+    // 7. 호감도 변화 분석 (동기 처리로 변경하여 결과 전송)
+    const affinityResult = await analyzeAndUpdateAffinity(
+      finalUserId,
+      npcId,
+      message,
+      affinityData.affinityScore
+    );
+
+    // 8. 호감도 정보 전송 (변화량 + 이유 포함)
+    if (affinityResult) {
+      res.write(`data: ${JSON.stringify({
+        affinity: affinityResult.newScore,
+        affinityLevel: affinityService.getAffinityLevelName(affinityResult.newLevel),
+        affinityDelta: affinityResult.delta,
+        affinityOldLevel: affinityResult.oldLevel,
+        affinityNewLevel: affinityResult.newLevel,
+        levelChanged: affinityResult.oldLevel !== affinityResult.newLevel,
+        affinityReason: affinityResult.reason,
+      })}\n\n`);
+    } else {
+      // 분석 실패 시 현재 값 전송
+      res.write(`data: ${JSON.stringify({
+        affinity: affinityData.affinityScore,
+        affinityLevel: affinityService.getAffinityLevelName(affinityData.affinityLevel),
+        affinityDelta: 0,
+        affinityReason: '',
+      })}\n\n`);
     }
 
     res.write('data: [DONE]\n\n');
@@ -626,53 +677,176 @@ router.post('/chat/level4/stream', async (req: Request, res: Response) => {
   }
 });
 
+// 호감도 분석 결과 타입
+interface AffinityUpdateResult {
+  delta: number;
+  newScore: number;
+  oldScore: number;
+  reason: string;
+  oldLevel: affinityService.AffinityLevel;
+  newLevel: affinityService.AffinityLevel;
+}
+
+// 호감도 분석 및 업데이트 헬퍼 함수
+async function analyzeAndUpdateAffinity(
+  userId: string,
+  npcId: string,
+  userMessage: string,
+  currentAffinityScore: number
+): Promise<AffinityUpdateResult | null> {
+  try {
+    // 현재 호감도 단계에 맞는 분석 프롬프트 사용
+    const analysisPrompt = affinityService.getAffinityAnalysisPrompt(currentAffinityScore);
+
+    const analysisResponse = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 100,
+      system: analysisPrompt,
+      messages: [{ role: 'user', content: userMessage }]
+    });
+
+    const analysisContent = analysisResponse.content[0];
+    const analysisText = analysisContent?.type === 'text' ? analysisContent.text : '';
+
+    // JSON 파싱
+    const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const analysis = JSON.parse(jsonMatch[0]);
+      if (typeof analysis.delta === 'number') {
+        const oldLevel = affinityService.getAffinityLevel(currentAffinityScore);
+        const newScore = await affinityService.updateAffinity(userId, npcId, analysis.delta);
+        const newLevel = affinityService.getAffinityLevel(newScore);
+
+        console.log(`Affinity updated: ${analysis.delta} (${analysis.reason})`);
+
+        return {
+          delta: analysis.delta,
+          newScore,
+          oldScore: currentAffinityScore,
+          reason: analysis.reason || '',
+          oldLevel,
+          newLevel,
+        };
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error('Affinity analysis error:', err);
+    return null;
+  }
+}
+
 // ============================================
 // Level 4: Personality 시스템 (별이) - 일반 (하위호환)
-// TODO: 호감도 시스템 및 감정 상태 추가
 // ============================================
 router.post('/chat/level4', async (req: Request, res: Response) => {
   try {
-    const { message } = req.body;
+    const { message, userId } = req.body;
 
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'Message is required' });
       return;
     }
 
-    // TODO: 사용자 호감도 조회
-    // const affinity = await getAffinity(userId);
-    const affinity = 50; // 임시 호감도 (0-100)
+    const finalUserId = userId || 'anonymous';
+    const npcId = 'npc-level4';
 
-    // 호감도에 따른 프롬프트 수정
-    let personalityModifier = '';
-    if (affinity < 30) {
-      personalityModifier = '\n\n## 현재 상태: 경계 중\n- 짧고 무뚝뚝하게 대답합니다\n- "...뭐야", "...귀찮은데" 같은 말투를 사용합니다';
-    } else if (affinity < 70) {
-      personalityModifier = '\n\n## 현재 상태: 보통\n- 기본적인 대화를 합니다\n- 적당히 친절합니다';
-    } else {
-      personalityModifier = '\n\n## 현재 상태: 친밀\n- 친절하고 상세하게 대답합니다\n- "당신의 운명에 좋은 기운이..." 같은 긍정적인 점괘를 봐줍니다';
-    }
+    // 1. 호감도 조회
+    const affinityData = await affinityService.getAffinity(finalUserId, npcId);
+    const personalityPrompt = affinityService.getPersonalityPrompt(affinityData);
 
+    // 2. Claude API 호출
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
-      system: LEVEL4_PROMPT + personalityModifier,
+      system: LEVEL4_PROMPT + personalityPrompt,
       messages: [{ role: 'user', content: message }]
     });
 
     const textContent = response.content[0];
     const responseText = textContent?.type === 'text' ? textContent.text : '';
 
-    // TODO: 호감도 업데이트 (대화 내용에 따라)
-    // await updateAffinity(userId, deltaAffinity);
+    // 3. 호감도 변화 분석 (비동기, 현재 호감도 단계 전달)
+    analyzeAndUpdateAffinity(finalUserId, npcId, message, affinityData.affinityScore).catch(err => {
+      console.error('Affinity update error:', err);
+    });
 
     res.json({
       response: responseText,
-      affinity: affinity, // 현재 호감도 반환
+      affinity: affinityData.affinityScore,
+      affinityLevel: affinityService.getAffinityLevelName(affinityData.affinityLevel),
     });
   } catch (error) {
     console.error('Level 4 chat error:', error);
     res.status(500).json({ error: 'Failed to get response' });
+  }
+});
+
+// ============================================
+// Level 4: 대화 시작 - 스트리밍 + 메모리 (채팅창 열릴 때 자동 호출)
+// ============================================
+router.post('/chat/level4/start/stream', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.body;
+    const finalUserId = userId || 'anonymous';
+    const npcId = 'npc-level4';
+
+    // 호감도 조회
+    const affinityData = await affinityService.getAffinity(finalUserId, npcId);
+    const personalityPrompt = affinityService.getPersonalityPrompt(affinityData);
+
+    // 이전 대화 기록 조회 (메모리)
+    const previousConversations = await memoryService.getRecentConversations(finalUserId, npcId, 10);
+    const conversationHistory = previousConversations
+      .map((msg) => `${msg.role === 'user' ? '손님' : '별이'}: ${msg.content}`)
+      .join('\n');
+    const userSummary = await memoryService.getUserSummary(finalUserId, npcId);
+    const isFirstVisit = previousConversations.length === 0;
+
+    // 컨텍스트 구성
+    let memoryContext = '';
+    if (isFirstVisit) {
+      memoryContext += '\n\n## 상황:\n처음 온 손님입니다.';
+    } else {
+      if (userSummary) {
+        memoryContext += `\n\n## 이 손님에 대해 기억하는 것:\n${userSummary}`;
+      }
+      if (conversationHistory) {
+        memoryContext += `\n\n## 최근 대화 기록:\n${conversationHistory}`;
+      }
+      memoryContext += '\n\n## 상황:\n다시 온 손님입니다. 기억하는 내용을 자연스럽게 언급하세요.';
+    }
+
+    // SSE 헤더 설정
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const stream = await anthropic.messages.stream({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: LEVEL4_PROMPT + personalityPrompt + memoryContext,
+      messages: [{ role: 'user', content: '(손님이 점술소에 들어왔습니다)' }]
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
+      }
+    }
+
+    // 호감도 정보 전송
+    res.write(`data: ${JSON.stringify({
+      affinity: affinityData.affinityScore,
+      affinityLevel: affinityService.getAffinityLevelName(affinityData.affinityLevel)
+    })}\n\n`);
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (error) {
+    console.error('Level 4 start stream error:', error);
+    res.write(`data: ${JSON.stringify({ error: 'Failed to get response' })}\n\n`);
+    res.end();
   }
 });
 
@@ -715,6 +889,81 @@ router.post('/chat', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Chat error:', error);
     res.status(500).json({ error: 'Failed to get response' });
+  }
+});
+
+// ============================================
+// 관계 상태 조회 API
+// ============================================
+
+// 특정 NPC와의 관계 상태 조회 (메모리 + 호감도)
+router.post('/relationship-status', async (req: Request, res: Response) => {
+  try {
+    const { userId, npcId, level } = req.body;
+
+    if (!userId || !npcId) {
+      res.status(400).json({ error: 'userId and npcId are required' });
+      return;
+    }
+
+    let hasMemory = false;
+    let affinity = null;
+    let affinityLevel = null;
+
+    // Level 3+: 메모리 확인
+    if (level >= 3) {
+      const conversations = await memoryService.getRecentConversations(userId, npcId, 1);
+      hasMemory = conversations.length > 0;
+    }
+
+    // Level 4: 호감도 확인
+    if (level === 4) {
+      const affinityData = await affinityService.getAffinity(userId, npcId);
+      affinity = affinityData.affinityScore;
+      affinityLevel = affinityData.affinityLevel;
+    }
+
+    res.json({
+      hasMemory,
+      affinity,
+      affinityLevel,
+    });
+  } catch (error) {
+    console.error('Relationship status error:', error);
+    res.status(500).json({ error: 'Failed to get relationship status' });
+  }
+});
+
+// ============================================
+// 리셋 API (데모용)
+// ============================================
+
+// 특정 NPC와의 관계 초기화 (메모리 + 호감도)
+router.post('/reset', async (req: Request, res: Response) => {
+  try {
+    const { userId, npcId } = req.body;
+
+    if (!userId || !npcId) {
+      res.status(400).json({ error: 'userId and npcId are required' });
+      return;
+    }
+
+    // 메모리 초기화
+    const memoryReset = await memoryService.resetMemory(userId, npcId);
+
+    // 호감도 초기화 (Level 4만 해당)
+    const affinityReset = await affinityService.resetAffinity(userId, npcId);
+
+    console.log(`Reset completed for ${userId}/${npcId} - memory: ${memoryReset}, affinity: ${affinityReset}`);
+
+    res.json({
+      success: true,
+      memoryReset,
+      affinityReset,
+    });
+  } catch (error) {
+    console.error('Reset error:', error);
+    res.status(500).json({ error: 'Failed to reset' });
   }
 });
 

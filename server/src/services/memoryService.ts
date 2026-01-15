@@ -129,3 +129,35 @@ export async function updateUserSummary(
 
   return true;
 }
+
+// 메모리 초기화 (대화 기록 + 유저 요약 삭제)
+export async function resetMemory(
+  userId: string,
+  npcId: string
+): Promise<boolean> {
+  // 대화 기록 삭제
+  const { error: convError } = await supabase
+    .from('conversations')
+    .delete()
+    .eq('user_id', userId)
+    .eq('npc_id', npcId);
+
+  if (convError) {
+    console.error('Delete conversations error:', convError);
+    return false;
+  }
+
+  // 유저 요약 삭제
+  const { error: summaryError } = await supabase
+    .from('user_summaries')
+    .delete()
+    .eq('user_id', userId)
+    .eq('npc_id', npcId);
+
+  if (summaryError) {
+    console.error('Delete summary error:', summaryError);
+    return false;
+  }
+
+  return true;
+}
