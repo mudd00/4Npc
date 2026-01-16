@@ -5,6 +5,8 @@ import InteractionPrompt from './ui/InteractionPrompt';
 import InteractionMenu from './ui/InteractionMenu';
 import TechInfoPanel from './ui/TechInfoPanel';
 import DemoGuide from './ui/DemoGuide';
+import ConnectionStatus from './ui/ConnectionStatus';
+import HelpPanel from './ui/HelpPanel';
 import { useChat } from '../hooks/useChat';
 import { getQuickInfo, resetRelationship, getRelationshipStatus } from '../lib/api';
 import type { InfoCategory, RelationshipStatus } from '../lib/api';
@@ -19,6 +21,7 @@ export default function Game() {
   const [isQuickInfoLoading, setIsQuickInfoLoading] = useState(false);
   const [relationshipStatus, setRelationshipStatus] = useState<Record<number, RelationshipStatus>>({});
   const [showGuide, setShowGuide] = useState(true);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   // NPC 레벨에 따라 다른 API 엔드포인트 사용
   const { messages, isLoading, error, send, clearMessages, startConversation, affinityInfo } = useChat(nearNPC?.level ?? 2);
@@ -49,10 +52,18 @@ export default function Game() {
     }
   }, [isChatOpen, nearNPC?.level, messages.length, startConversation]);
 
-  // F키로 메뉴 열기
+  // 키보드 단축키
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'f' && nearNPC && !isMenuOpen && !isChatOpen) {
+      // Tab: 도움말 토글
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        setIsHelpOpen((prev) => !prev);
+        return;
+      }
+
+      // F: NPC 메뉴 열기
+      if (e.key.toLowerCase() === 'f' && nearNPC && !isMenuOpen && !isChatOpen && !isHelpOpen) {
         e.preventDefault();
         try {
           if (document.pointerLockElement) {
@@ -63,8 +74,12 @@ export default function Game() {
         }
         setIsMenuOpen(true);
       }
+
+      // ESC: 닫기
       if (e.key === 'Escape') {
-        if (isChatOpen) {
+        if (isHelpOpen) {
+          setIsHelpOpen(false);
+        } else if (isChatOpen) {
           setIsChatOpen(false);
           // 메시지는 세션 동안 유지
         } else if (isMenuOpen) {
@@ -75,7 +90,7 @@ export default function Game() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [nearNPC, isMenuOpen, isChatOpen]);
+  }, [nearNPC, isMenuOpen, isChatOpen, isHelpOpen]);
 
   // 메뉴에서 "대화하기" 선택
   const handleSelectChat = useCallback(() => {
@@ -186,10 +201,17 @@ export default function Game() {
 
       {/* HUD */}
       <div className="absolute top-4 left-4 bg-black/50 text-white px-3 py-2 rounded-lg text-sm">
+        <div className="flex items-center justify-between gap-4 mb-2 pb-2 border-b border-white/20">
+          <span className="font-bold text-xs">조작법</span>
+          <ConnectionStatus checkInterval={15000} />
+        </div>
         <p>WASD: 이동</p>
         <p>마우스: 시점 회전</p>
         <p>F: 상호작용 (NPC 근처)</p>
         <p>ESC: 닫기</p>
+        <p className="mt-2 pt-2 border-t border-white/20 text-indigo-300">
+          Tab: 도움말
+        </p>
       </div>
 
       {/* 기술 설명 패널 - NPC 근처에서만 표시 */}
@@ -217,6 +239,9 @@ export default function Game() {
 
       {/* 첫 방문자 가이드 */}
       {showGuide && <DemoGuide onComplete={() => setShowGuide(false)} />}
+
+      {/* 도움말 패널 */}
+      <HelpPanel isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   );
 }

@@ -1,8 +1,26 @@
 import type { NPCLevel } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const BASE_URL = API_URL.replace('/api', '');
 
 export type InfoCategory = 'history' | 'location' | 'npc' | 'rumor';
+
+// 서버 연결 상태 확인
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5초 타임아웃
+
+    const response = await fetch(`${BASE_URL}/health`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
 
 // 레벨별 API 엔드포인트 매핑 (스트리밍)
 const LEVEL_STREAM_ENDPOINTS: Record<NPCLevel, string> = {
