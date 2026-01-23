@@ -1,7 +1,8 @@
 import type { NPCLevel } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-const BASE_URL = API_URL.replace('/api', '');
+// 프로덕션에서는 상대 경로 사용 (같은 서버에서 서빙)
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api');
+const BASE_URL = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
 export type InfoCategory = 'history' | 'location' | 'npc' | 'rumor';
 
