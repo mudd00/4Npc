@@ -101,7 +101,7 @@ export async function sendMessageByLevelStream(
   onChunk: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
-  onAffinity?: (affinity: { affinity: number; affinityLevel: string }) => void
+  onAffinity?: (affinity: { affinity: number; affinityLevel: string; affinityDelta?: number; levelChanged?: boolean; newLevel?: string; affinityReason?: string }) => void
 ): Promise<void> {
   const endpoint = LEVEL_STREAM_ENDPOINTS[level];
 

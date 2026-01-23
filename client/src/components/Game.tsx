@@ -16,7 +16,7 @@ export default function Game() {
   const [nearNPC, setNearNPC] = useState<NPCConfig | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [playerPosition, setPlayerPosition] = useState({ x: 0, y: 0, z: 0 });
+  const [, setPlayerPosition] = useState({ x: 0, y: 0, z: 0 });
   const [bubbleMessage, setBubbleMessage] = useState('');
   const [isQuickInfoLoading, setIsQuickInfoLoading] = useState(false);
   const [relationshipStatus, setRelationshipStatus] = useState<Record<number, RelationshipStatus>>({});

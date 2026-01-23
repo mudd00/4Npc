@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { sendMessageByLevelStream, startLevel3ConversationStream, startLevel4ConversationStream } from '../lib/api';
 import type { ChatMessage, NPCLevel } from '../types';
 
