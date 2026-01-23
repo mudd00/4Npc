@@ -31,7 +31,7 @@ const clientDistPath = path.resolve(__dirname, '../../client/dist');
 app.use(express.static(clientDistPath));
 
 // SPA 폴백 - API가 아닌 모든 요청은 index.html로
-app.get('*', (req, res) => {
+app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 
