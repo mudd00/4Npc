@@ -1,0 +1,12 @@
+{
+  "name": "4npc",
+  "version": "1.0.0",
+  "description": "4NPC AI Chatbot",
+  "scripts": {
+    "build": "cd server && npm install && npm run build",
+    "start": "cd server && npm run start"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
